@@ -306,7 +306,14 @@ function updateDownload($param)
 		$ob = new Remote();
 		$ob->filepass = $ret;
 		$var = base64_encode(serialize($ob));
-		$url = "http://$url:{$sgbl->__var_prog_port}/htmllib/lbin/filedownload.php?frm_info=$var";
+
+		// New browser security wont let you open http link from a https site. 
+		if(isset($_SERVER['HTTPS']))
+                	$protocol =  $_SERVER['HTTPS'] == 'on' ? 'https' : 'http';
+                else $protocol= 'http';
+                                                      		
+		$url = "$protocol://$url:{$sgbl->__var_prog_port}/htmllib/lbin/filedownload.php?frm_info=$var";
+		
 		header("Location: $url");
 		//$ghtml->print_redirect($url);
 		exit;
