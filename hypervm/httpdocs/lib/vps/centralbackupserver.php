@@ -48,7 +48,7 @@ function updateform($subaction, $param)
 	//$vlist['enable_flag'] = null;
 	$vlist['nname'] = array('M', $this->nname);
 	$vlist['slavename'] = array('s', self::get_slave_list());
-	$vlist['ssh_port'] = array('m', '22');
+	$vlist['ssh_port'] = array('m', $this->ssh_port);
 	$vlist['snapshotdir'] = null;
 	$this->setDefaultValue("backup_num", "3");
 	$vlist['backup_num'] = null;
