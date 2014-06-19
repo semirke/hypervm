@@ -165,7 +165,7 @@ static function pserverInfo()
 
 
 	$ret['priv_s_memory'] = $res['memtotal']/$unit;
-	$ret['used_s_memory'] = ($res['memtotal'] - $res['memfree'])/$unit;
+        $ret['used_s_memory'] = ($res['memtotal'] - ($res['memfree']  + $res['cached'] + $res['buffers']))/$unit;            
 	$ret['priv_s_swap'] = $res['swaptotal']/$unit;
 	$ret['used_s_swap'] = ($res['swaptotal'] - $res['swapfree']) /$unit;
 
