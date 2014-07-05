@@ -5,6 +5,11 @@ class vps__openvz extends Lxdriverclass {
 	static function find_memoryusage()
 	{
 		$list = lfile("/proc/user_beancounters");
+		if (self::checkIfVswapEnabled($vpsid) ) {
+                    $beancounter = "physpages";
+                } else {
+                    $beancounter = "privvmpages";
+                }
 		foreach($list as $l) {
 			$l = trimSpaces($l);
 	
@@ -12,10 +17,11 @@ class vps__openvz extends Lxdriverclass {
 				$vpsid = strtil($l, ":");
 				$l = strfrom($l, " ");
 			}
-	
-			if (!csb($l, "privvmpages")) { 
-				continue;
+			if (!csb($l, $beancounter)){
+			        continue;
 			}
+			
+	
 	
 			$load = explode(" ", $l);
 			$mem = round(($load[1]/256) * 1024 * 1024);
@@ -692,18 +698,6 @@ class vps__openvz extends Lxdriverclass {
 		lfile_put_contents("{$this->main->corerootdir}/{$this->main->vpsid}/etc/inithooks.conf", $string);
 	}
 	
-	function setMemoryUsage()
-	{
-	
-		if (is_unlimited($this->main->priv->memory_usage)) {
-			$memory = 999999 * 256;
-		} else {
-			$memory = $this->main->priv->memory_usage * 256;
-		}
-
-               lxshell_return("/usr/sbin/vzctl", "set", $this->main->vpsid, "--save", "--privvmpages", $memory);
-               lxshell_return("/usr/sbin/vzctl", "set", $this->main->vpsid, "--save", "--meminfo", "pages:$memory");
-       }
 
 	function do_backup()
 	{
@@ -798,7 +792,7 @@ class vps__openvz extends Lxdriverclass {
 		lxshell_return("/usr/sbin/vzctl", "set", $this->main->vpsid, "--save", "--vmguarpages", "{$memory}M:". PHP_INT_MAX);
 		lxshell_return("/usr/sbin/vzctl", "set", $this->main->vpsid, "--save", "--oomguarpages", "{$memory}M:".PHP_INT_MAX);
 		lxshell_return("/usr/sbin/vzctl", "set", $this->main->vpsid, "--save", "--shmpages", "{$memory}M:{$memory}M");
-		lxshell_return("/usr/sbin/vzctl", "set", $this->main->vpsid, "--save", "--physpages", "0:".PHP_INT_MAX);
+//		lxshell_return("/usr/sbin/vzctl", "set", $this->main->vpsid, "--save", "--physpages", "0:".PHP_INT_MAX);
 		$tcp = round(($memory * 1024)/5, 0);
 		$process = $this->main->priv->process_usage;
 		if (is_unlimited($process) || $process > 5555) {
@@ -811,6 +805,52 @@ class vps__openvz extends Lxdriverclass {
 		$limit .= "K";
 		$tcp = "$tcp:$limit";
 		lxshell_return("/usr/sbin/vzctl", "set", $this->main->vpsid, "--save", "--tcpsndbuf", $tcp, "--tcprcvbuf", $tcp, "--othersockbuf", $tcp, "--dgramrcvbuf", $tcp);
+	}
+
+	function setMemoryUsage()
+	{
+	
+		if (is_unlimited($this->main->priv->memory_usage)) {
+			$memory = 999999 * 256;
+		} else {
+			$memory = $this->main->priv->memory_usage * 256;
+		}
+
+		// If vswap is enabled we change physpages to privvmpages
+		if($this->main->priv->isOn('vswap_flag')){
+		    // multiply it with the block size, when vSwap, set physpages
+		    lxshell_return("/usr/sbin/vzctl", "set", $this->main->vpsid, "--save", "--physpages", $this->main->priv->memory_usage * 256);
+		    // on Centos 6 with Ubi 14 guests I found wierd memory accounting without this (and without vswap)
+                    lxshell_return("/usr/sbin/vzctl", "set", $this->main->vpsid, "--save", "--privvmpages", "unlimited");
+		    
+		}
+		else 
+		{
+                        // Disable vSwap                        
+                        lxshell_return("/usr/sbin/vzctl", "set", $this->main->vpsid, "--save", "--physpages", 'unlimited');
+                        // no vSwap, set privvmpages
+		        lxshell_return("/usr/sbin/vzctl", "set", $this->main->vpsid, "--save", "--privvmpages", $memory);
+		        lxshell_return("/usr/sbin/vzctl", "set", $this->main->vpsid, "--save", "--meminfo", "pages:$memory");
+                }
+       }
+
+	// Added by Semir @ 2011 march 14
+	function setSwapUsage()
+	{
+	        if (is_unlimited($this->main->priv->swap_usage)) {   
+	                $memory = 2048;   
+	        } else {
+	                $memory = $this->main->priv->swap_usage;
+	        }
+	
+	    $memory = "0:" . $memory . "M";
+	
+	    lxshell_return("/usr/sbin/vzctl", "set", $this->main->vpsid, "--save", "--swappages", $memory);
+
+	    // Make sure all memory parameters are consistent
+	    $this->setMemoryUsage();
+		
+		
 	}
 
 	function createBaseConf()
@@ -842,26 +882,6 @@ class vps__openvz extends Lxdriverclass {
 		lxshell_return("/usr/sbin/vzctl", "set", $this->main->vpsid, "--save", "--diskspace", $diskusage, "--diskinodes", round($diskusage/2));
 	}
 
-	// Added by Semir @ 2011 march 14
-	function setSwapUsage()
-	{
-	        if (is_unlimited($this->main->priv->swap_usage)) {   
-	                $memory = 2048;   
-	        } else {
-	                $memory = $this->main->priv->swap_usage;
-	        }
-	
-	    $memory = "0:" . $memory . "M";
-	
-	    lxshell_return("/usr/sbin/vzctl", "set", $this->main->vpsid, "--save", "--swappages", $memory);
-		
-		// If vswap is enabled we change physpages to privvmpages
-		if($this->main->priv->isOn('vswap_flag'))
-		    // multiply it with the block size
-		    lxshell_return("/usr/sbin/vzctl", "set", $this->main->vpsid, "--save", "--physpages", $this->main->priv->memory_usage * 256);
-		else 
-		    lxshell_return("/usr/sbin/vzctl", "set", $this->main->vpsid, "--save", "--physpages", 'unlimited');
-	}
 
 	function setProcessUsage()
 	{
@@ -928,7 +948,7 @@ class vps__openvz extends Lxdriverclass {
 	}
 
 	// temproary version without quotes...
-public static function staticChangeConf($file, $var, $val)
+	public static function staticChangeConf($file, $var, $val)
 	{
 		$list = lfile_trim($file);
 		$match = false;
